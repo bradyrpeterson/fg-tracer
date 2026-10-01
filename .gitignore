@@ -216,3 +216,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# fg-vision project
+data/
+outputs/
+.venv/
+__pycache__/
+.DS_Store
