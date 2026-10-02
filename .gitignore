@@ -223,3 +223,12 @@ outputs/
 .venv/
 __pycache__/
 .DS_Store
+runs/
+*.pt
+# models: ignore everything except the one trained ball detector, which ships with the repo
+models/*
+!models/ball/
+models/ball/*
+!models/ball/weights/
+models/ball/weights/*
+!models/ball/weights/best.pt

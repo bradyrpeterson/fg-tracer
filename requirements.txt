@@ -1,0 +1,8 @@
+# install with: pip install -r requirements.txt
+opencv-python>=4.10
+numpy>=1.26
+scipy>=1.14
+torch>=2.3
+torchvision>=0.18
+ultralytics>=8.3
+imageio-ffmpeg>=0.5
