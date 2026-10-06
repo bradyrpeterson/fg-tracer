@@ -17,17 +17,17 @@ FADE_IN = 6             # frames for a late-starting line to fade in
 BALL_DOT = 7            # comet style: radius of the glowing dot on the ball
 
 
-def draw_line(image, points):
+def draw_line(image, points, color=COLOR):
     """Glow + core polyline with sub-pixel precision."""
     pts = np.round(np.asarray(points) * (1 << PRECISION)).astype(np.int32)
     glow = image.copy()
-    cv2.polylines(glow, [pts], False, COLOR, GLOW_WIDTH, cv2.LINE_AA, shift=PRECISION)
+    cv2.polylines(glow, [pts], False, color, GLOW_WIDTH, cv2.LINE_AA, shift=PRECISION)
     cv2.addWeighted(glow, 0.35, image, 0.65, 0, dst=image)
-    cv2.polylines(image, [pts], False, COLOR, CORE_WIDTH, cv2.LINE_AA, shift=PRECISION)
+    cv2.polylines(image, [pts], False, color, CORE_WIDTH, cv2.LINE_AA, shift=PRECISION)
     cv2.polylines(image, [pts], False, (200, 220, 255), 1, cv2.LINE_AA, shift=PRECISION)  # bright center
 
 
-def draw_comet(image, points, fade=1.0):
+def draw_comet(image, points, fade=1.0, color=COLOR):
     """A tapered, fading tail ending in a glowing dot (points run from tail to ball).
 
     The tail is drawn into a brightness mask: thin and faint at the back, thick
@@ -49,8 +49,8 @@ def draw_comet(image, points, fade=1.0):
     core = np.clip(mask * fade, 0, 1)[..., None]
     halo = np.clip(glow * fade, 0, 1)[..., None]
     out = image.astype(np.float32)
-    out = out * (1 - 0.5 * halo) + np.array(COLOR, np.float32) * 0.5 * halo   # soft colored glow
-    out = out * (1 - core) + np.array(COLOR, np.float32) * core              # solid tail
+    out = out * (1 - 0.5 * halo) + np.array(color, np.float32) * 0.5 * halo   # soft colored glow
+    out = out * (1 - core) + np.array(color, np.float32) * core              # solid tail
     white = np.zeros((h, w), np.float32)
     cv2.circle(white, head, max(1, BALL_DOT - 3) << PRECISION, 1.0, -1, cv2.LINE_AA, shift=PRECISION)
     white = (white * fade)[..., None]
@@ -58,7 +58,7 @@ def draw_comet(image, points, fade=1.0):
     image[:] = np.clip(out, 0, 255).astype(np.uint8)
 
 
-def render(frames, curve, shift, C, kick, end, out_path, fps, style="line", start=None):
+def render(frames, curve, shift, C, kick, end, out_path, fps, style="line", start=None, colors=None):
     """Write the clip with the tracer; return the frame where the ball's path ends.
 
     curve(t) gives the ball's field position at (possibly fractional) frame t;
@@ -67,6 +67,7 @@ def render(frames, curve, shift, C, kick, end, out_path, fps, style="line", star
     flight, following the ball, and fades out after the flight ends.
     start: frame where the line begins (default: the kick). A later start
     hides the messy first frames next to the kicker; the line fades in there.
+    colors: optional color for each frame (e.g. the green/yellow/red verdict).
     """
     start = kick if start is None else start
     h, w = frames[0].shape[:2]
@@ -78,6 +79,7 @@ def render(frames, curve, shift, C, kick, end, out_path, fps, style="line", star
     last = frames[-1]
     for i, frame in enumerate(frames):
         out = frame.copy()
+        color = COLOR if colors is None else colors[i]
         upto = min(i, end)
         if style == "comet":
             tail = int(round(COMET_SECONDS * fps))
@@ -87,12 +89,12 @@ def render(frames, curve, shift, C, kick, end, out_path, fps, style="line", star
             first = max(start, upto - tail)
             if upto > start and fade > 0:
                 ts = np.linspace(first, upto, int((upto - first) * SAMPLES_PER_FRAME) + 2)
-                draw_comet(out, [to_frame(C, i, curve(t)) + shift(i) for t in ts], fade)
+                draw_comet(out, [to_frame(C, i, curve(t)) + shift(i) for t in ts], fade, color)
         elif upto > start:
             ts = np.linspace(start, upto, int((upto - start) * SAMPLES_PER_FRAME) + 1)
             fade_in = min(1.0, (i - start) / FADE_IN) if start > kick else 1.0
             drawn = out.copy()
-            draw_line(drawn, [to_frame(C, i, curve(t)) + shift(i) for t in ts])
+            draw_line(drawn, [to_frame(C, i, curve(t)) + shift(i) for t in ts], color)
             cv2.addWeighted(drawn, fade_in, out, 1 - fade_in, 0, dst=out)
         video.send(np.ascontiguousarray(out))
         if i == end:

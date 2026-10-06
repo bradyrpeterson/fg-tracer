@@ -15,6 +15,7 @@ uprights. See README.md for setup and the full pipeline.
 source .venv/bin/activate
 python src/trace.py data/raw/kick_05.mp4        # trace a clip -> outputs/<clip>_tracer.mp4
 python src/evaluate.py kick_01 kick_03 kick_05  # line accuracy vs labels/ground_truth.json
+python src/label.py data/raw/kick_09.mp4        # click the ball by hand -> labels/hand_labels.json
 ./train_long.sh <name> <epochs> --train ... --test kick_05   # detached training (survives time limits)
 ```
 
@@ -36,7 +37,28 @@ python src/evaluate.py kick_01 kick_03 kick_05  # line accuracy vs labels/ground
 - Broadcast NFL clips are copyrighted: don't bulk-download them. Open footage
   (Wikimedia Commons, see `data/external/CREDITS.md`) and synthetic data (`src/synth.py`) are fine.
 
-## Roadmap: color-coded tracer (NOT STARTED - wait for the user's go-ahead)
+## Roadmap: track (almost) any kick
+Goal: work on wide/still cameras and college games, with the ball itself (not the
+camera tilting) deciding when the kick happens.
+1. Hand-label 20-30 varied clips with `label.py` (DONE: tool + `make_dataset.py --labels`
+   + `evaluate.py --truth`). Hold ~1/3 out of training.
+2. Kick timing from the ball: a track that starts at the holder and rises (kick.py);
+   camera tilt only as a hint. Hand labels' "kick" frame checks it.
+3. Retrain on hand labels + synthetic (synth.py with the new stadiums), several image sizes.
+4. Measure on held-out clips (evaluate.py, check_verdicts.py).
+
+## Roadmap: color-coded tracer (FIRST VERSION DONE: `--verdict`)
+Status: `uprights.py` finds yellow posts/bar; `verdict.py` refits the curve on past
+sightings each frame and reads the ball's position at the goal over a crossing-time
+window (distance / 15-20 yd/s, because depth can't be measured from behind: a 3D
+gravity fit was tried and failed). `check_verdicts.py`: 6/6 final verdicts right,
+but the window and thresholds were tuned on those same clips. Next: more labeled
+clips (especially misses), white college posts, reading "NN YD ATTEMPT" from the screen.
+Crossbar / short kicks: removed for now (the user wants it back later). Judging it
+from ball height on screen failed on long low kicks (kick_07, kick_08 went "unsure").
+Ideas: officials' signal (after the fact only), ball size (too few pixels), side angle.
+
+Original plan:
 Goal: like a golf shot tracer, the line is **green** when the kick looks good,
 **yellow** when unsure, **red** when it's missing / off target.
 

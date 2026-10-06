@@ -1,11 +1,13 @@
 """Measure how close the traced line is to the real ball.
 
-labels/ground_truth.json holds ball positions checked by eye:
+labels/ground_truth.json holds ball positions from the old tracker, checked by eye:
     {"kick_05": {"95": [x, y], ...}, ...}
+labels/hand_labels.json (label.py) holds hand-clicked ones: use --truth for those.
 For each clip we trace the ball and report the distance (pixels) between the
 line's head and the true ball in those frames.
 
     python src/evaluate.py kick_05 [--model models/ball/weights/best.pt]
+    python src/evaluate.py kick_09 --truth labels/hand_labels.json
 """
 import argparse
 import json
@@ -43,8 +45,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("clips", nargs="+")
     parser.add_argument("--model", default="models/ball/weights/best.pt")
+    parser.add_argument("--truth", default="labels/ground_truth.json")
     args = parser.parse_args()
-    truth = json.loads(Path("labels/ground_truth.json").read_text())
+    truth = json.loads(Path(args.truth).read_text())
     model = YOLO(args.model)
     for clip in args.clips:
-        score(clip, model, truth[clip])
+        entry = truth[clip]
+        score(clip, model, entry.get("ball", entry))  # hand_labels.json keeps positions under "ball"

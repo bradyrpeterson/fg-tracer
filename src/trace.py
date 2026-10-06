@@ -2,6 +2,7 @@
 
     python src/trace.py data/raw/kick_05.mp4
     python src/trace.py data/raw/kick_05.mp4 --model models/ball/weights/best.pt
+    python src/trace.py data/raw/kick_05.mp4 --verdict   # green / yellow / red: is it good?
 
 Steps (each in its own file):
   motion.py     read frames, measure camera movement, find screen overlays
@@ -10,6 +11,7 @@ Steps (each in its own file):
   detect_ball.py  run the trained detector on three-frame motion images
   trajectory.py link detections into one smooth path from the holder
   draw.py       draw the tracer line
+  verdict.py    --verdict: color the line by whether the kick looks good
 """
 import argparse
 import hashlib
@@ -25,6 +27,7 @@ from field import field_coords
 from kick import find_kick
 from motion import camera_homography, camera_motion, nearest, overlay_mask, read_frames, specks_now, to_gray
 from trajectory import FILL_RADIUS, drift_correction, fill_from_curve, fit_flight, grow, seed_track
+from verdict import kick_distance, label, verdict_color, verdicts
 
 KICK_SLACK = 5       # frames the kick may come before the camera starts following
 SEED_CONF = 0.3      # detections at least this confident start the track
@@ -96,7 +99,8 @@ def trace(clip, model):
     where = "not found" if holder is None else f"({holder[0]:.0f}, {holder[1]:.0f})"
     print(f"  holder {where}; kick at frame {kick:.1f}")
     return {"frames": frames, "grays": grays, "motions": motions, "C": C, "kick": kick,
-            "end": end, "curve": curve, "shift": shift, "sightings": {i: pts[i] for i in kept}, "detections": dets}
+            "end": end, "curve": curve, "shift": shift, "sightings": {i: pts[i] for i in kept}, "detections": dets,
+            "holder": holder, "start": start, "ignore": ignore}
 
 
 def airborne_frame(r):
@@ -124,6 +128,10 @@ if __name__ == "__main__":
                         help="line: the whole path; comet: a tail that follows the ball")
     parser.add_argument("--start", default="airborne", choices=["kick", "airborne"],
                         help="kick: line starts at the holder; airborne: once the ball is clearly in the air")
+    parser.add_argument("--verdict", action="store_true",
+                        help="color the line: green = good, yellow = unsure, red = no good")
+    parser.add_argument("--distance", type=float,
+                        help="kick distance in yards for --verdict (default: from data/clips.csv)")
     args = parser.parse_args()
     clip = Path(args.clip)
     print(clip.name)
@@ -131,9 +139,19 @@ if __name__ == "__main__":
     suffix = "tracer" if args.style == "line" else args.style
     if args.start == "kick":
         suffix += "_from_kick"
+    fps = playback_fps(clip, len(r["frames"]))
+    colors = None
+    if args.verdict:
+        suffix += "_verdict"
+        distance = args.distance or kick_distance(clip)
+        if distance is None:
+            print("  kick distance unknown (use --distance); the verdict will be less sure")
+        chance = verdicts(r, fps, distance)
+        colors = [verdict_color(p) for p in chance]
+        print(f"  verdict: {label(chance[r['end']])} (chance it's good {chance[r['end']]:.2f})")
     out = Path("outputs") / f"{clip.stem}_{suffix}.mp4"
     start = airborne_frame(r) if args.start == "airborne" else None
     still = render(r["frames"], r["curve"], r["shift"], r["C"], r["kick"], r["end"], out,
-                   playback_fps(clip, len(r["frames"])), style=args.style, start=start)
+                   fps, style=args.style, start=start, colors=colors)
     cv2.imwrite(str(out.with_suffix(".png")), still)
     print(f"  saved {out}")

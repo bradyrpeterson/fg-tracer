@@ -8,6 +8,11 @@ keep only the sightings that fit its smooth curve, and use those as labels.
                            which is cleaner. Places where the detector fired but
                            the ball wasn't ("hard negatives") are saved too, so
                            the next model learns not to repeat those mistakes.
+  Hand labels (--labels):  for clips you clicked with label.py, those positions
+                           are used instead of a tracker's. Needed for clips the
+                           tracker gets wrong (wide still shots, new stadiums).
+                           With --model too, the detector's mistakes become
+                           hard negatives.
 
 Each example is a 640x640 tile of the three-frame motion image (stack.py), in YOLO format:
     data/ball_dataset/<clip>/images/<name>.jpg
@@ -15,15 +20,17 @@ Each example is a 640x640 tile of the three-frame motion image (stack.py), in YO
 
     python src/make_dataset.py data/raw/kick_0*.mp4
     python src/make_dataset.py data/raw/kick_0*.mp4 --model models/ball/weights/best.pt
+    python src/make_dataset.py data/raw/kick_09.mp4 --labels labels/hand_labels.json --model models/ball/weights/best.pt
 """
 import argparse
+import json
 import shutil
 from pathlib import Path
 
 import cv2
 import numpy as np
 
-from motion import read_frames
+from motion import camera_motion, read_frames, to_gray
 from stack import three_frame_stack
 
 TILE = 640           # YOLO's normal input size, so the ball isn't shrunk
@@ -53,20 +60,35 @@ def corner_around(point, w, h, rng):
     return x0, y0
 
 
-def examples_for_clip(path, rng, model=None):
+def from_hand_labels(frames, ball, model=None):
+    """Use ball positions clicked with label.py instead of a tracker's."""
+    blurred = [to_gray(f) for f in frames]
+    motions = [None] + [camera_motion(blurred[i - 1], blurred[i]) for i in range(1, len(frames))]
+    sightings = {int(i): tuple(p) for i, p in ball.items()}
+    detections = {}
+    if model is not None:  # the detector's guesses around the flight, to find its mistakes
+        from detect_ball import detect_all
+        grays = [cv2.cvtColor(f, cv2.COLOR_BGR2GRAY) for f in frames]
+        detections = detect_all(model, grays, motions, max(min(sightings) - 20, 1), max(sightings), conf=0.2)
+    return {"sightings": sightings, "motions": motions, "detections": detections}
+
+
+def examples_for_clip(path, rng, model=None, hand=None):
     frames = read_frames(path)
-    if model is None:
+    if hand:
+        result = from_hand_labels(frames, hand, model)
+    elif model is None:
         from track_ball import track
         result = track(frames)
-        mistakes = {}
     else:
         from trace import trace
         result = trace(path, model)
-        # confident detections far from the ball are mistakes worth learning from
-        mistakes = {i: [(x, y) for x, y, c in ds if c >= 0.2 and
-                        (i not in result["sightings"] or
-                         np.hypot(x - result["sightings"][i][0], y - result["sightings"][i][1]) > NOT_BALL)]
-                    for i, ds in result["detections"].items()}
+    # confident detections far from the ball are mistakes worth learning from
+    mistakes = {} if model is None else {
+        i: [(x, y) for x, y, c in ds if c >= 0.2 and
+            (i not in result["sightings"] or
+             np.hypot(x - result["sightings"][i][0], y - result["sightings"][i][1]) > NOT_BALL)]
+        for i, ds in result["detections"].items()}
     grays = [cv2.cvtColor(f, cv2.COLOR_BGR2GRAY) for f in frames]
     h, w = grays[0].shape
     folder = OUT / path.stem
@@ -100,12 +122,16 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("clips", nargs="+")
     parser.add_argument("--model", help="trained detector; omit for round 1")
+    parser.add_argument("--labels", help="hand labels from label.py (labels/hand_labels.json)")
     args = parser.parse_args()
+    hand = json.loads(Path(args.labels).read_text()) if args.labels else {}
     model = None
     if args.model:
         from ultralytics import YOLO
         model = YOLO(args.model)
     rng = np.random.default_rng(0)
     for arg in args.clips:
-        print(Path(arg).name)
-        examples_for_clip(Path(arg), rng, model)
+        path = Path(arg)
+        ball = hand.get(path.stem, {}).get("ball")
+        print(path.name, "(hand labels)" if ball else "")
+        examples_for_clip(path, rng, model, ball)
