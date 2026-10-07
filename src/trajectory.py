@@ -7,7 +7,9 @@
            Going backward we stop when the ball is back at the holder.
 3. fit:    fit the physics of a kick (a parabola seen through a camera) to the
            sightings; it also gives the exact kick time and launch spot.
-4. fill:   look for the ball near the fitted flight where it wasn't found; refit.
+4. fill:   look for the ball near the fitted flight where it wasn't found, grow
+           forward again, refit. Only the detector's sightings are used, and a
+           gap doesn't end the flight: the ball is followed as long as it's found.
 5. drift:  a slow, smooth per-frame shift that keeps the line's head on the ball.
 """
 import numpy as np
@@ -18,9 +20,8 @@ from field import to_field, to_frame
 
 LINK_RADIUS = 40    # pixels: how far a detection may be from a track's prediction
 SEARCH = 35         # pixels: how far from the predicted spot to look when growing
-MAX_MISSES = 5      # frames without a detection before a track / growth stops
+MAX_MISSES = 12     # frames without a detection before a track / growth stops
 OUTLIER_PIXELS = 8   # sightings that jump this far from their neighbours are dropped
-TAIL_GAP = 8         # frames: a gap this long near the end means the flight is over
 MIN_DEPTH = 0.3      # the ball stays at least this fraction of its kick distance from the camera
 PIXEL_NOISE = 3      # pixels: how far off a good detection usually is
 HOLDER_TOLERANCE = 25  # pixels: how far the true launch spot may be from the holder estimate
@@ -154,11 +155,13 @@ def fit_flight(pts, C, holder, earliest):
         error = seen - hom[:, :2] / hom[:, 2:]
         # Slow camera drift is fine (drift_correction handles it); a sighting is
         # a mistake only if it jumps away from the slowly changing drift.
-        slow = np.c_[[make_smoothing_spline(frames[keep], error[keep, d], lam=DRIFT_STIFFNESS)(frames)
-                      for d in (0, 1)]].T
+        if keep.sum() >= 5:
+            slow = np.c_[[make_smoothing_spline(frames[keep], error[keep, d], lam=DRIFT_STIFFNESS)(frames)
+                          for d in (0, 1)]].T
+        else:  # too few sightings to measure drift (the spline needs 5)
+            slow = np.zeros_like(error)
         off = np.hypot(*(error - slow).T)
         new_keep = off < max(OUTLIER_PIXELS, 3 * np.median(off[keep]))
-        new_keep &= ~after_tail_gap(frames, new_keep)
         if (new_keep == keep).all():
             break
         keep = new_keep
@@ -213,38 +216,17 @@ def drift_correction(sightings, C, curve, kick):
     return lambda i: np.array([float(sx(min(i, end))), float(sy(min(i, end)))])
 
 
-def after_tail_gap(frames, keep):
-    """True for kept sightings that come after a long gap at the end of the flight.
-
-    Once the ball is gone (into the net, out of the picture) the camera often
-    cuts or zooms out, and stray movement found long after the last real
-    sighting would drag the end of the line somewhere the ball never went.
-    """
-    kept = frames[keep]
-    late = np.zeros(len(frames), bool)
-    half = kept[len(kept) // 2]
-    for a, b in zip(kept, kept[1:]):
-        if a >= half and b - a > TAIL_GAP:
-            late = frames >= b
-            break
-    return late
-
-
-def fill_from_curve(pts, dets, C, curve, kick, last, size, backup=None):
+def fill_from_curve(pts, dets, C, curve, kick, last, size):
     """Look for the ball near the fitted flight in frames where it wasn't found.
 
     Physics predicts well even across long gaps (e.g. when the ball crosses a
-    dark part of the stadium), and a bit past the last sighting too. If the
-    detector saw nothing there, backup(frame, guess) gets a try (trace.py uses
-    plain motion specks); anything it finds must still fit the physics curve.
+    dark part of the stadium), and a bit past the last sighting too. Only the
+    detector's sightings count: plain motion specks used to fill in here, but
+    near the posts they were often crowd movement and pulled the line off the ball.
     Returns how many sightings were added.
     """
     w, h = size
     seen_until = max(pts)
-    # Right after the kick the ball is next to the players, whose movement would
-    # fool the backup, so it only helps after the detector has seen the ball itself.
-    detector_first = min((i for i in pts if any(np.hypot(x - pts[i][0], y - pts[i][1]) < 1
-                                                  for x, y, _ in dets.get(i, []))), default=seen_until)
     added = 0
     for i in range(int(np.ceil(kick)) + 1, min(last, seen_until + LOOK_AHEAD) + 1):
         if i in pts:
@@ -256,9 +238,4 @@ def fill_from_curve(pts, dets, C, curve, kick, last, size, backup=None):
         if near:
             pts[i] = min(near, key=lambda p: np.hypot(p[0] - gx, p[1] - gy))
             added += 1
-        elif backup is not None and i > detector_first:
-            found = backup(i, (gx, gy))
-            if found is not None:
-                pts[i] = (float(found[0]), float(found[1]))
-                added += 1
     return added

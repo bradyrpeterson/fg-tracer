@@ -19,18 +19,21 @@ import pickle
 from pathlib import Path
 
 import cv2
+import imageio_ffmpeg
 from ultralytics import YOLO
 
 from detect_ball import detect_all
 from draw import render
 from field import field_coords
 from kick import find_kick
-from motion import camera_homography, camera_motion, nearest, overlay_mask, read_frames, specks_now, to_gray
-from trajectory import FILL_RADIUS, drift_correction, fill_from_curve, fit_flight, grow, seed_track
+from motion import camera_homography, camera_motion, overlay_mask, read_frames, to_gray
+from trajectory import drift_correction, fill_from_curve, fit_flight, grow, seed_track
 from verdict import kick_distance, label, verdict_color, verdicts
 
 KICK_SLACK = 5       # frames the kick may come before the camera starts following
 SEED_CONF = 0.3      # detections at least this confident start the track
+WEAK_SEED_CONF = 0.1  # ...or this confident, if the confident ones give only a short track
+MIN_SEED = 8         # sightings: a starting track shorter than this is worth a second try
 GROW_CONF = 0.05     # weaker detections are fine for extending a track we trust
 FILL_ROUNDS = 5      # rounds of fit-the-physics-then-search
 AIRBORNE_FRAMES = 8  # --start airborne: frames after the kick before the line appears (~1/4 s)
@@ -74,6 +77,9 @@ def trace(clip, model):
     strong = {i: [d for d in ds if d[2] >= SEED_CONF] for i, ds in dets.items()}
 
     pts = seed_track(strong, C)
+    if len(pts) < MIN_SEED:  # the detector may see the ball, just not confidently: retry with weaker detections
+        weak = seed_track({i: [d for d in ds if d[2] >= WEAK_SEED_CONF] for i, ds in dets.items()}, C)
+        pts = max(pts, weak, key=len)
     if len(pts) < 3:
         raise SystemExit("  no ball found: the detector didn't see a clear flight in this clip")
     seeded = len(pts)
@@ -82,12 +88,14 @@ def trace(clip, model):
     grow(pts, dets, C, +1, earliest, last)
     start = reached - 1 if reached else earliest
     size = frames[0].shape[1::-1]
-    # Fit the physics curve, look for the ball near it in empty frames, refit, repeat.
-    # Where the detector saw nothing, plain motion specks near the curve are the backup.
-    backup = lambda i, guess: nearest(specks_now(frames, blurred, motions, i, guess, FILL_RADIUS), guess)
+    # Fit the physics curve, look for the ball near it in empty frames, grow the
+    # track forward again from the newest sightings, refit, repeat until nothing new.
     for _ in range(FILL_ROUNDS):
         curve, kick, kept = fit_flight(pts, C, holder, start)
-        if not fill_from_curve(pts, dets, C, curve, kick, last, size, backup):
+        before = len(pts)
+        fill_from_curve(pts, dets, C, curve, kick, last, size)
+        grow(pts, dets, C, +1, earliest, last)
+        if len(pts) == before:
             break
     curve, kick, kept = fit_flight(pts, C, holder, start)
     end = max(kept)
@@ -113,11 +121,14 @@ def airborne_frame(r):
 
 
 def playback_fps(clip, kept_frames):
-    """Frames per second that keeps real-time speed after dropping duplicate frames."""
-    cap = cv2.VideoCapture(str(clip))
-    fps, total = cap.get(cv2.CAP_PROP_FPS), cap.get(cv2.CAP_PROP_FRAME_COUNT)
-    cap.release()
-    return fps * kept_frames / total if total else 30
+    """Frames per second that keeps real-time speed after dropping duplicate frames.
+
+    Uses the video's real length (ffmpeg decodes it), not the frame count in the
+    file's header: trimmed clips often claim far more frames than they have,
+    which made the output play in slow motion.
+    """
+    _, seconds = imageio_ffmpeg.count_frames_and_secs(str(clip))
+    return kept_frames / seconds if seconds else 30
 
 
 if __name__ == "__main__":
@@ -149,6 +160,8 @@ if __name__ == "__main__":
         chance = verdicts(r, fps, distance)
         colors = [verdict_color(p) for p in chance]
         print(f"  verdict: {label(chance[r['end']])} (chance it's good {chance[r['end']]:.2f})")
+    if Path(args.model) != Path(parser.get_default("model")):  # e.g. models/ball_v2/... -> _ball_v2
+        suffix += "_" + Path(args.model).parent.parent.name
     out = Path("outputs") / f"{clip.stem}_{suffix}.mp4"
     start = airborne_frame(r) if args.start == "airborne" else None
     still = render(r["frames"], r["curve"], r["shift"], r["C"], r["kick"], r["end"], out,
