@@ -7,6 +7,16 @@ trained on our own clips do the work. Raw clips go in `data/raw/`, and
 `data/clips.csv` records each one's distance, result
 (MADE / MISS LEFT / MISS RIGHT) and camera angle; `data/clip_sources.csv` keeps where the first ones came from.
 
+## Demo
+
+With `--verdict`, the line changes color as the ball flies, using only what it has
+seen so far: yellow while unsure, then green for a make or red for a miss.
+
+| Miss | Make |
+|---|---|
+| ![51-yard miss right, the line turns red](docs/kick_04_demo.gif) | ![59-yard make, the line turns green](docs/kick_07_demo.gif) |
+| Harrison Butker, 51 yd, MISS RIGHT (2022 Wk 15, KC @ HOU). [Original video](https://www.youtube.com/watch?v=5WYUj5erBVQ) | Jake Bates, 59 yd, MADE (2023 Wk 12, DET @ NYG). [Original video](https://www.youtube.com/watch?v=mIQ2upniXSs) |
+
 ## Quick start: trace your own video
 
 ```bash

@@ -30,8 +30,9 @@ python src/label.py data/raw/kick_09.mp4        # click the ball by hand -> labe
   so a fresh clone can trace videos right away; other models stay local. When a
   retrained model is better, replace that file and commit it.
 - Detector results are cached per model in `outputs/cache/`.
-- Honest testing: the current detector never trained on the test clips kick_09, 10,
-  13, 17, 20 (plus `data/external/nw_pat.mp4`); keep them out of training. Score the
+- Honest testing: test clips kick_10, 13, 17, 20 (plus `data/external/nw_pat.mp4`) are
+  never trained on; keep them out. kick_09 (the only wide/still shot) moved into training
+  for ball_v4, so no wide shot is tested yet: the next wide/still clip should be a test clip. Score the
   line against hand clicks with `evaluate.py --truth labels/hand_labels.json`.
   kick_12 (blurry, odd shot) was set aside in `data/excluded/` at the user's request. Ground truth in `labels/ground_truth.json` came from
   the old tracker, so it's only accurate to a few pixels.
