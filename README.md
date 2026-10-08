@@ -18,8 +18,8 @@ seen so far: yellow while unsure, then green for a make or red for a miss. Inspi
 ## Quick start: trace your own video
 
 ```bash
-git clone https://github.com/bradyrpeterson/fg-vision.git
-cd fg-vision
+git clone https://github.com/bradyrpeterson/fg-tracer.git
+cd fg-tracer
 python3 -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt    # first time only (a few minutes)

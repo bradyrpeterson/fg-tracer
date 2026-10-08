@@ -1,4 +1,4 @@
-# fg-vision
+# fg-tracer
 
 A golf-style shot tracer for field goal kicks: give it a broadcast clip (camera
 behind the kicker) and it draws the ball's flight from the holder through the
