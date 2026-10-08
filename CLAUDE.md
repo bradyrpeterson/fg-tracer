@@ -26,7 +26,7 @@ python src/label.py data/raw/kick_09.mp4        # click the ball by hand -> labe
 - Long jobs: tool background commands are killed after ~2 hours. Run training with
   `train_long.sh` (nohup + caffeinate) and poll `models/<name>/results.csv`.
 - `data/` and `outputs/` are gitignored. In `models/`, only the shipped detector
-  `models/ball/weights/best.pt` (ball_v3: 14 training clips + synthetic data) is committed,
+  `models/ball/weights/best.pt` (ball_v4: 15 training clips incl. wide-shot kick_09 + synthetic data) is committed,
   so a fresh clone can trace videos right away; other models stay local. When a
   retrained model is better, replace that file and commit it.
 - Detector results are cached per model in `outputs/cache/`.

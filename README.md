@@ -1,8 +1,6 @@
-# fg-vision
+# FG Kick Tracer
 
-A golf-style "shot tracer" for field goal kicks. Give it a broadcast clip of a
-field goal (camera behind the kicker) and it draws the ball's flight from the
-holder's hands through the uprights. Python, OpenCV and a small YOLO model
+A golf-style "shot tracer" for field goal kicks. Give it a broadcast clip of a field goal (camera behind the kicker) and it draws the ball's flight from the holder's hands through the uprights. Python, OpenCV and a small YOLO model
 trained on our own clips do the work. Raw clips go in `data/raw/`, and
 `data/clips.csv` records each one's distance, result
 (MADE / MISS LEFT / MISS RIGHT) and camera angle; `data/clip_sources.csv` keeps where the first ones came from.
@@ -10,7 +8,7 @@ trained on our own clips do the work. Raw clips go in `data/raw/`, and
 ## Demo
 
 With `--verdict`, the line changes color as the ball flies, using only what it has
-seen so far: yellow while unsure, then green for a make or red for a miss.
+seen so far: yellow while unsure, then green for a make or red for a miss. Inspired by the drone tracer used on the PGA tour which predicts whether or not a ball will land in the fairway. 
 
 | Miss | Make |
 |---|---|
@@ -31,11 +29,9 @@ python src/trace.py path/to/your_kick.mp4 --style comet    # or a comet on the b
 ```
 
 **Is it good?** `--verdict` colors the line like a golf shot tracer: **green** when the
-kick looks good, **yellow** while unsure, **red** when it looks wide. (Only left /
-right is judged for now; clearing the crossbar can't be seen reliably from behind.) Each
-frame's color only uses what has been seen so far, so it's an honest live prediction.
+kick looks good, **yellow** while unsure, **red** when it looks wide. 
 It needs the kick distance (`--distance 41`, or the clip's row in `data/clips.csv`)
-and yellow NFL uprights.
+and yellow uprights.
 
 ```bash
 python src/trace.py path/to/your_kick.mp4 --verdict --distance 41

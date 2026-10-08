@@ -73,7 +73,8 @@ def trace(clip, model):
     C = field_coords(exact, camera_kick)
 
     dets = cached_detections(clip, model, grays, motions, earliest)
-    dets = {i: [d for d in ds if not ignore[int(d[1]), int(d[0])]] for i, ds in dets.items()}
+    # Detections inside the overlay mask are kept: a graphic never moves along a
+    # flight, so the tracker skips it anyway, and the mask can cover a still sky.
     strong = {i: [d for d in ds if d[2] >= SEED_CONF] for i, ds in dets.items()}
 
     pts = seed_track(strong, C)

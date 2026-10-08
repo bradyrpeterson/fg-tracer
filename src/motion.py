@@ -25,7 +25,12 @@ def to_gray(frame):
 
 
 def overlay_mask(grays):
-    """Pixels that never change (scoreboard, logos) plus a thin border."""
+    """Pixels that never change (scoreboard, logos) plus a thin border.
+
+    Used to keep graphics out of the camera-motion estimate and the kick finder.
+    It must not delete ball detections: with a still camera, the stands and sky
+    barely change either, and the ball flies right through them.
+    """
     most_change = np.zeros_like(grays[0])
     for a, b in zip(grays, grays[1:]):
         most_change = cv2.max(most_change, cv2.absdiff(a, b))
